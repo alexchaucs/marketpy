@@ -1,10 +1,19 @@
 import requests
 from typing import List, Optional
-from lib.model import CandleResponseOKX, OHLCVDataOKX
+from lib.model import CandleResponseOKX, OHLCVDataOKX, OHLCVDataBINANCE
 from pydantic import ValidationError
 import pandas as pd
+from datetime import datetime
 
-def retrieveData(inst_id: str, exchange:str, after: Optional[int] = None, before: Optional[int] = None, candleSize: Optional[str] = None):
+def dateConversionToUnix(dateString: Optional[str]) -> int:
+    if dateString is None:
+        return int(datetime.now().timestamp())
+    
+    dt = datetime.strptime(dateString, '%Y%m%d')
+    return int(dt.timestamp())
+
+
+def retrieveData(inst_id: str, exchange:str, after: Optional[int] = None, before: Optional[int] = None, candleSize: Optional[str] = None) -> pd.DataFrame:
     '''
     Retrieve data from give exchange, coin, bar size, after and before date
     '''
@@ -12,13 +21,14 @@ def retrieveData(inst_id: str, exchange:str, after: Optional[int] = None, before
         # Build Params
         params = {
             "instId": inst_id,
-            "after": after,
-            "before": before,
+            "after": dateConversionToUnix(after),
+            "before": dateConversionToUnix(before),
             "bar": candleSize
         }
         # Remove any missing params
         params = {k: v for k, v in params.items() if v is not None}
 
+        print(params)
         # Base URL
         base_url = "https://www.okx.com/api/v5/market/history-candles"
 
@@ -41,19 +51,18 @@ def retrieveData(inst_id: str, exchange:str, after: Optional[int] = None, before
         # Parse Candle Data
         try:
             candle_data = [OHLCVDataOKX.parse_list(d) for d in candle_response.data]
-            print(candle_data)
         except ValidationError as e:
             print(f"Validation error: {e}")
 
         # Convert to dataframe
-        print(pd.DataFrame(candle_data))
+        return pd.DataFrame(candle_data)
 
     elif exchange == 'BINANCE': 
         # Build Params
         params = {
             "symbol": inst_id,
-            "startTime": after,
-            "endTime": before,
+            "startTime": dateConversionToUnix(after),
+            "endTime": dateConversionToUnix(before),
             "interval": candleSize
         }
         # Remove any missing params
@@ -68,15 +77,16 @@ def retrieveData(inst_id: str, exchange:str, after: Optional[int] = None, before
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
             return None
-        
-        # Parsing cnadle resposne
+
+        # print(response.json())        
+        # Parse Candle Data
         try:
-            candle_response = CandleResponse.parse_obj(response.json())
+            candle_data = [OHLCVDataBINANCE.parse_list(d) for d in response.json()]
         except ValidationError as e:
             print(f"Validation error: {e}")
-            return None
 
-        # Return Parse Response
-        return candle_response
+        # Convert to dataframe
+        return pd.DataFrame(candle_data)
+
     return
 
